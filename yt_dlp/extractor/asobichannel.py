@@ -13,7 +13,7 @@ class AsobiChannelBaseIE(InfoExtractor):
     _MICROCMS_HEADER = {'X-MICROCMS-API-KEY': 'qRaKehul9AHU8KtL0dnq1OCLKnFec6yrbcz3'}
 
     def _extract_info(self, metadata):
-        return traverse_obj(metadata, {
+        info = traverse_obj(metadata, {
             'id': ('id', {str}),
             'title': ('title', {str}),
             'description': ('body', {clean_html}),
@@ -23,6 +23,15 @@ class AsobiChannelBaseIE(InfoExtractor):
             'channel': ('channel', 'name', {str}),
             'channel_id': ('channel', 'id', {str}),
         })
+
+        if traverse_obj(metadata, ('playCheckList', 0, 'membership_plan')):
+            info['availability'] = 'subscriber_only'
+        elif traverse_obj(metadata, ('playCheckList', 0, 'pay_item')):
+            info['availability'] = 'premium_only'
+        else:
+            info['availability'] = 'public'
+
+        return info
 
 
 class AsobiChannelIE(AsobiChannelBaseIE):
@@ -166,3 +175,39 @@ class AsobiChannelTagURLIE(AsobiChannelBaseIE):
                 }
 
         return self.playlist_result(entries(), tag_id, title)
+
+
+class AsobiChannelChannelIE(AsobiChannelBaseIE):
+    IE_NAME = 'asobichannel:channel'
+    IE_DESC = 'ASOBI CHANNEL'
+
+    _VALID_URL = r'https?://asobichannel\.asobistore\.jp/channel/(?P<id>[a-z0-9-_]+)'
+    _TESTS = [{
+        'url': 'https://asobichannel.asobistore.jp/channel/denonbu',
+        'info_dict': {
+            'id': 'denonbu',
+            'title': '電音部',
+        },
+        'playlist_mincount': 16,
+    }]
+
+    def _real_extract(self, url):
+        channel_id = self._match_id(url)
+        webpage = self._download_webpage(url, channel_id)
+        title = traverse_obj(self._search_nextjs_data(
+            webpage, channel_id, fatal=False), ('props', 'pageProps', 'data', 'name', {str}))
+
+        media = self._download_json(
+            f'https://channel.microcms.io/api/v1/media?limit=999&filters=(channel[equals]{channel_id})',
+            channel_id, headers=self._MICROCMS_HEADER)
+
+        def entries():
+            for metadata in traverse_obj(media, ('contents', lambda _, v: v['id'])):
+                yield {
+                    '_type': 'url',
+                    'url': f'https://asobichannel.asobistore.jp/watch/{metadata["id"]}',
+                    'ie_key': AsobiChannelIE.ie_key(),
+                    **self._extract_info(metadata),
+                }
+
+        return self.playlist_result(entries(), channel_id, title)

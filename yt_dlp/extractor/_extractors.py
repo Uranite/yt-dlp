@@ -124,6 +124,7 @@ from .arte import (
     ArteTVPlaylistIE,
 )
 from .asobichannel import (
+    AsobiChannelChannelIE,
     AsobiChannelIE,
     AsobiChannelTagURLIE,
 )
